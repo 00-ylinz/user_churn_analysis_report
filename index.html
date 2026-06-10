@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OTA酒店用户降频流失分析报告</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    color: #1a1a1a;
+    background: #f5f4f0;
+    line-height: 1.7;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  /* Layout */
+  .page { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+
+  /* Header */
+  .report-header {
+    background: #fff;
+    border-radius: 16px;
+    padding: 36px 40px;
+    margin-bottom: 24px;
+    border: 0.5px solid rgba(0,0,0,0.08);
+  }
+  .report-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  .report-tag {
+    background: #EEEDFE; color: #534AB7;
+    font-size: 12px; font-weight: 500;
+    padding: 3px 10px; border-radius: 20px;
+  }
+  .report-date { font-size: 12px; color: #888; }
+  .report-title { font-size: 26px; font-weight: 500; color: #1a1a1a; margin-bottom: 10px; }
+  .report-subtitle { font-size: 14px; color: #666; line-height: 1.7; }
+  .report-toc { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .toc-item {
+    font-size: 12px; color: #534AB7;
+    border: 0.5px solid #CECBF6;
+    border-radius: 6px;
+    padding: 3px 10px;
+  }
+
+  /* Section */
+  .section { margin-bottom: 24px; }
+  .section-card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px 32px;
+    border: 0.5px solid rgba(0,0,0,0.08);
+    margin-bottom: 16px;
+  }
+  .section-title {
+    font-size: 17px; font-weight: 500;
+    color: #1a1a1a;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 0.5px solid rgba(0,0,0,0.08);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 8px;
+    background: #EEEDFE; color: #534AB7;
+    font-size: 13px; font-weight: 500; flex-shrink: 0;
+  }
+  .section-body { font-size: 14px; color: #333; line-height: 1.8; }
+
+  /* Key numbers row */
+  .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .kpi-card {
+    background: #f8f7f4;
+    border-radius: 10px; padding: 16px 18px;
+  }
+  .kpi-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+  .kpi-val { font-size: 24px; font-weight: 500; }
+  .kpi-sub { font-size: 12px; color: #aaa; margin-top: 4px; }
+  .kpi-badge {
+    display: inline-block; font-size: 11px; font-weight: 500;
+    padding: 1px 7px; border-radius: 4px; margin-right: 4px;
+  }
+  .badge-loss { background: #FCEBEB; color: #A32D2D; }
+  .badge-down { background: #FAEEDA; color: #854F0B; }
+  .badge-same { background: #E6F1FB; color: #185FA5; }
+  .badge-up { background: #EAF3DE; color: #3B6D11; }
+  .badge-warn { background: #FAEEDA; color: #854F0B; }
+  .badge-purple { background: #EEEDFE; color: #534AB7; }
+
+  /* Change indicator */
+  .chg-neg { color: #A32D2D; font-weight: 500; }
+  .chg-pos { color: #3B6D11; font-weight: 500; }
+
+  /* Tables */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  .data-table th {
+    background: #f5f4f0; padding: 8px 12px;
+    text-align: center; font-weight: 500; color: #555;
+    border-bottom: 0.5px solid rgba(0,0,0,0.1);
+  }
+  .data-table th:first-child { text-align: left; }
+  .data-table td {
+    padding: 8px 12px; border-bottom: 0.5px solid rgba(0,0,0,0.06);
+    text-align: center; color: #333;
+  }
+  .data-table td:first-child { text-align: left; font-weight: 500; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #fafaf8; }
+  .data-table .highlight-row td { background: #FAEEDA22; }
+  .data-table .best { color: #3B6D11; font-weight: 500; }
+  .data-table .worst { color: #A32D2D; font-weight: 500; }
+
+  /* Two column */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* Profile cards */
+  .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .profile-card { border-radius: 12px; padding: 18px 20px; }
+  .profile-card.loss { background: #FCEBEB; }
+  .profile-card.down { background: #FAEEDA; }
+  .profile-card.same { background: #E6F1FB; }
+  .profile-card.up { background: #EAF3DE; }
+  .profile-title { font-size: 14px; font-weight: 500; margin-bottom: 10px; }
+  .profile-title.loss { color: #A32D2D; }
+  .profile-title.down { color: #854F0B; }
+  .profile-title.same { color: #185FA5; }
+  .profile-title.up { color: #3B6D11; }
+  .profile-quote {
+    font-size: 13px; font-style: italic; color: #666;
+    background: rgba(255,255,255,0.5);
+    border-radius: 6px; padding: 8px 12px;
+    margin-bottom: 10px;
+  }
+  .profile-list { list-style: none; }
+  .profile-list li {
+    font-size: 13px; padding: 4px 0;
+    border-bottom: 0.5px solid rgba(0,0,0,0.06);
+    padding-left: 14px; position: relative;
+  }
+  .profile-list li:last-child { border-bottom: none; }
+  .profile-list li::before { content: "·"; position: absolute; left: 2px; font-size: 16px; line-height: 1.3; }
+
+  /* Insight boxes */
+  .insight-box {
+    background: #EEEDFE22;
+    border-left: 3px solid #534AB7;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 13px; color: #333;
+  }
+  .insight-box strong { color: #534AB7; }
+  .warn-box {
+    background: #FAEEDA33;
+    border-left: 3px solid #EF9F27;
+    border-radius: 0 8px 8px 0;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 13px; color: #333;
+  }
+  .warn-box strong { color: #854F0B; }
+
+  /* Chart wrapper */
+  .chart-wrap { position: relative; }
+
+  /* Legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 12px; font-size: 12px; color: #666; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Matrix table */
+  .matrix-wrap { overflow-x: auto; }
+  .matrix-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .matrix-table th {
+    background: #f0efe9; padding: 7px 10px; font-weight: 500; color: #555;
+    border: 0.5px solid rgba(0,0,0,0.1); text-align: center;
+  }
+  .matrix-table td {
+    padding: 7px 10px; border: 0.5px solid rgba(0,0,0,0.07);
+    text-align: center; color: #333;
+  }
+  .matrix-table td.row-label { font-weight: 500; text-align: left; background: #f8f7f4; }
+  .cell-high { background: #FCEBEB; color: #A32D2D; font-weight: 500; }
+  .cell-med { background: #FAEEDA; color: #854F0B; }
+  .cell-low { background: #EAF3DE; color: #3B6D11; }
+  .cell-neg { color: #A32D2D; font-weight: 500; }
+  .cell-pos { color: #3B6D11; font-weight: 500; }
+
+  /* Data bar inside table cell */
+  .bar-cell { position: relative; padding: 4px 6px; overflow: hidden; }
+  .bar-inner {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    height: 28px; border-radius: 0 4px 4px 0; opacity: 0.25; z-index: 0;
+  }
+  .bar-text { position: relative; z-index: 1; }
+
+  /* Heatmap table */
+  .heat-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+  .heat-table th {
+    background: #f5f4f0; padding: 10px 14px; font-weight: 500; color: #555;
+    border: 0.5px solid rgba(0,0,0,0.08); text-align: center; font-size: 13px;
+  }
+  .heat-table th:first-child { text-align: left; }
+  .heat-table td {
+    padding: 0; border: 0.5px solid rgba(0,0,0,0.06);
+    text-align: center; font-size: 13px; font-weight: 500;
+  }
+  .heat-table td:first-child {
+    text-align: left; font-weight: 500; padding: 10px 14px;
+    background: #fafaf8;
+  }
+  .heat-cell { padding: 10px 14px; display: block; }
+  .heat-neg-1 { background: #FCEBEB88; }
+  .heat-neg-2 { background: #FCEBEB; }
+  .heat-neg-3 { background: #F7C1C1; }
+  .heat-neg-4 { background: #F09595; color: #fff; }
+  .heat-pos { background: #EAF3DE; color: #3B6D11; }
+  .heat-neutral { background: transparent; color: #999; }
+
+  /* Recommend table */
+  .rec-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .rec-table th {
+    background: #f5f4f0; padding: 9px 14px;
+    text-align: left; font-weight: 500; color: #555;
+    border-bottom: 0.5px solid rgba(0,0,0,0.1);
+  }
+  .rec-table td {
+    padding: 10px 14px; border-bottom: 0.5px solid rgba(0,0,0,0.06);
+    vertical-align: top; color: #333;
+  }
+  .rec-table tr:last-child td { border-bottom: none; }
+
+  /* Summary bar */
+  .summary-bar {
+    background: linear-gradient(135deg, #534AB7 0%, #3C3489 100%);
+    border-radius: 12px; padding: 20px 24px;
+    color: #fff; margin-bottom: 16px;
+  }
+  .summary-bar h3 { font-size: 15px; font-weight: 500; margin-bottom: 8px; opacity: 0.85; }
+  .summary-bar p { font-size: 14px; line-height: 1.8; opacity: 0.9; }
+
+  /* Flow arrows */
+  .flow-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+  .flow-step {
+    background: #f0efe9; border-radius: 8px;
+    padding: 8px 14px; font-size: 13px; font-weight: 500;
+  }
+  .flow-arrow { color: #aaa; font-size: 16px; }
+  .flow-step.active { background: #EAF3DE; color: #3B6D11; }
+  .flow-step.broken { background: #FCEBEB; color: #A32D2D; }
+
+  /* Divider */
+  hr { border: none; border-top: 0.5px solid rgba(0,0,0,0.08); margin: 20px 0; }
+
+  /* Footer */
+  .report-footer {
+    text-align: center; font-size: 12px; color: #bbb;
+    margin-top: 48px; padding-top: 24px;
+    border-top: 0.5px solid rgba(0,0,0,0.08);
+  }
+
+  @media (max-width: 768px) {
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    .two-col, .profile-grid { grid-template-columns: 1fr; }
+    .three-col { grid-template-columns: 1fr; }
+    .section-card { padding: 20px 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ===== HEADER ===== -->
+  <div class="report-header">
+    <div class="report-meta">
+      <span class="report-tag">OTA酒店业务</span>
+      <span class="report-tag">用户留存分析</span>
+      <span class="report-date">数据周期：2024–2026年1-5月同期对比 | 行为研究窗口：2025.12.25–12.31</span>
+    </div>
+    <div class="report-title">用户降频与流失深度分析报告</div>
+    <div class="report-subtitle">
+      本报告聚焦 OTA 酒店业务的用户留存健康度问题。通过连续两年同期留存矩阵对比，发现用户降频与流失趋势正在加剧；进而对不同类型的用户订单与行为进行深度还原，识别关键预警特征，并提出有针对性的运营建议。
+    </div>
+    <div class="report-toc">
+      <span class="toc-item">一、分析背景与留存矩阵</span>
+      <span class="toc-item">二、流失用户回访漏斗</span>
+      <span class="toc-item">三、流失用户订单特征画像</span>
+      <span class="toc-item">四、流失前行为特征分析</span>
+      <span class="toc-item">五、用户画像</span>
+      <span class="toc-item">六、运营建议</span>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 1: 分析背景 + 留存矩阵（融合） ===== -->
+  <div class="section-card">
+    <div class="section-title">
+      <span class="section-num">一</span>分析背景与留存矩阵：流失率全面攀升
+    </div>
+    <div class="section-body">
+
+
+<ul style="padding-left:20px;margin-bottom:12px;">
+        <li style="margin-bottom:6px;"><strong>对照组：</strong>24年1-5月有消费 → 这批人在25年1-5月的去向</li>
+        <li style="margin-bottom:6px;"><strong>实验组：</strong>25年1-5月有消费 → 这批人在26年1-5月的去向</li>
+        <li><strong>去向分类：</strong>流失（0单）、降频（减少但>0）、同频（不变）、升频（增加）</li>
+      </ul>
+
+      <div class="summary-bar">
+        <h3>核心发现（一句话）</h3>
+        <p>今年（25→26年）各频次段用户流失率相比去年（24→25年）<strong>全面上升 1.2~1.5 个百分点</strong>，升频比例<strong>全面下降 0.88~1.84 个百分点</strong>——用户粘性系统性下滑，高频用户恶化最为严重。</p>
+      </div>
+
+      <!-- 两矩阵并排：24→25 vs 25→26 -->
+      <div class="two-col" style="margin-bottom:16px;">
+        <div>
+          <h4 style="font-size:13px;font-weight:500;color:#666;margin-bottom:8px;text-align:center;">对照组：24年1-5月 → 25年1-5月</h4>
+          <div class="matrix-wrap">
+            <table class="matrix-table">
+              <thead>
+                <tr>
+                  <th style="width:70px;">去向</th>
+                  <th>1-2单<br><span style="font-weight:400;font-size:10px;color:#999;">12.56M</span></th>
+                  <th>3-5单<br><span style="font-weight:400;font-size:10px;color:#999;">2.73M</span></th>
+                  <th>6-10单<br><span style="font-weight:400;font-size:10px;color:#999;">1.00M</span></th>
+                  <th>10单+<br><span style="font-weight:400;font-size:10px;color:#999;">0.54M</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="row-label"><span class="badge-loss">流失</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(74.27%);background:#E24B4A;"></div><span class="bar-text">74.27%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(50.40%);background:#E24B4A;"></div><span class="bar-text">50.40%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(35.11%);background:#E24B4A;"></div><span class="bar-text">35.11%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(23.80%);background:#E24B4A;"></div><span class="bar-text">23.80%</span></td>
+                </tr>
+                <tr>
+                  <td class="row-label"><span class="badge-down">降频</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(3.61%);background:#EF9F27;"></div><span class="bar-text">3.61%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(30.25%);background:#EF9F27;"></div><span class="bar-text">30.25%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(47.56%);background:#EF9F27;"></div><span class="bar-text">47.56%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(61.62%);background:#EF9F27;"></div><span class="bar-text">61.62%</span></td>
+                </tr>
+                <tr>
+                  <td class="row-label"><span class="badge-same">同频</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(10.32%);background:#378ADD;"></div><span class="bar-text">10.32%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(5.12%);background:#378ADD;"></div><span class="bar-text">5.12%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(2.98%);background:#378ADD;"></div><span class="bar-text">2.98%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(1.55%);background:#378ADD;"></div><span class="bar-text">1.55%</span></td>
+                </tr>
+                <tr>
+                  <td class="row-label"><span class="badge-up">升频</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(11.80%);background:#639922;"></div><span class="bar-text">11.80%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(14.23%);background:#639922;"></div><span class="bar-text">14.23%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(14.34%);background:#639922;"></div><span class="bar-text">14.34%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(13.03%);background:#639922;"></div><span class="bar-text">13.03%</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <h4 style="font-size:13px;font-weight:500;color:#666;margin-bottom:8px;text-align:center;">实验组：25年1-5月 → 26年1-5月</h4>
+          <div class="matrix-wrap">
+            <table class="matrix-table">
+              <thead>
+                <tr>
+                  <th style="width:70px;">去向</th>
+                  <th>1-2单<br><span style="font-weight:400;font-size:10px;color:#999;">12.92M</span></th>
+                  <th>3-5单<br><span style="font-weight:400;font-size:10px;color:#999;">2.85M</span></th>
+                  <th>6-10单<br><span style="font-weight:400;font-size:10px;color:#999;">1.07M</span></th>
+                  <th>10单+<br><span style="font-weight:400;font-size:10px;color:#999;">0.60M</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="row-label"><span class="badge-loss">流失</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(75.44%);background:#E24B4A;"></div><span class="bar-text">75.44%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(51.84%);background:#E24B4A;"></div><span class="bar-text">51.84%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(36.49%);background:#E24B4A;"></div><span class="bar-text">36.49%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(25.16%);background:#E24B4A;"></div><span class="bar-text">25.16%</span></td>
+                </tr>
+                <tr>
+                  <td class="row-label"><span class="badge-down">降频</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(3.59%);background:#EF9F27;"></div><span class="bar-text">3.59%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(30.11%);background:#EF9F27;"></div><span class="bar-text">30.11%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(47.59%);background:#EF9F27;"></div><span class="bar-text">47.59%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(61.75%);background:#EF9F27;"></div><span class="bar-text">61.75%</span></td>
+                </tr>
+                <tr>
+                  <td class="row-label"><span class="badge-same">同频</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(10.05%);background:#378ADD;"></div><span class="bar-text">10.05%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(4.93%);background:#378ADD;"></div><span class="bar-text">4.93%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(2.83%);background:#378ADD;"></div><span class="bar-text">2.83%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(1.49%);background:#378ADD;"></div><span class="bar-text">1.49%</span></td>
+                </tr>
+                <tr>
+                  <td class="row-label"><span class="badge-up">升频</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(10.92%);background:#639922;"></div><span class="bar-text">10.92%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(13.12%);background:#639922;"></div><span class="bar-text">13.12%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(13.09%);background:#639922;"></div><span class="bar-text">13.09%</span></td>
+                  <td class="bar-cell"><div class="bar-inner" style="width:calc(11.60%);background:#639922;"></div><span class="bar-text">11.60%</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <p style="font-size:12px;color:#999;text-align:center;margin-bottom:24px;">每个单元格中的颜色条表示该比例的大小，长度越长占比越高</p>
+
+      <hr>
+
+      <!-- 同比变化趋势图 -->
+      <h4 style="font-size:14px;font-weight:500;color:#333;margin-bottom:10px;">同比变化趋势（实验组 - 对照组）</h4>
+      <p style="font-size:13px;color:#666;margin-bottom:10px;">正值表示占比同比上升（流失/降频升高=恶化），负值表示占比同比下降（升频/同频降低=恶化）。</p>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>流失（流失率升高=恶化）</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#EF9F27;"></span>降频（降频率升高=恶化）</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>同频（同频率降低=恶化）</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#639922;"></span>升频（升频率降低=恶化）</div>
+      </div>
+      <div class="chart-wrap" style="height:300px;margin-bottom:16px;">
+        <canvas id="trendChart" role="img" aria-label="四类去向同比变化条形图">四类去向同比变化条形图</canvas>
+      </div>
+
+      <div class="insight-box">
+        <strong>关键发现：</strong>流失率全频次段同比上升 1.2~1.5pp；升频率全面下滑，且<strong>高频段恶化最严重</strong>（10单以上升频率下降 -1.84pp）。降频与同频的变化幅度相对较小。留存问题不是某一频次段的个例，而是系统性的——不论用户基础消费频次高低，留住他们并推动提频都变得更加困难。
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== SECTION 2: 流失用户回访漏斗 ===== -->
+  <div class="section-card">
+    <div class="section-title">
+      <span class="section-num">二</span>"流失"非完全流失：后一年仍有47.7%回访
+    </div>
+    <div class="section-body">
+
+      <p style="margin-bottom:14px;">这里追踪的是前一年1-5月有消费、后一年1-5月零单的用户（即前文定义的"流失"用户），观察这批人在<strong>后一年1-5月</strong>是否仍有平台访问行为（回访），以及他们的首页→列表→详情→填写→完成的转化漏斗表现。</p>
+
+      <!-- 漏斗表格 -->
+      <h4 style="font-size:14px;font-weight:500;color:#333;margin-bottom:10px;">流失用户回访漏斗（按前一年消费频次分组）</h4>
+      <div class="matrix-wrap" style="margin-bottom:10px;">
+        <table class="matrix-table" style="font-size:11px;">
+          <thead>
+            <tr>
+              <th style="width:70px;">时间段</th>
+              <th>前一年<br>消费用户</th>
+              <th>回访UV</th>
+              <th>回访率</th>
+              <th>首页UV</th>
+              <th>列表UV</th>
+              <th>详情UV</th>
+              <th>填写UV</th>
+              <th>完成UV</th>
+              <th>列表<br>通过率</th>
+              <th>详情<br>通过率</th>
+              <th>填写<br>通过率</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="font-weight:600;background:#EEEDFE22;">
+              <td class="row-label" style="font-weight:600;">24→25 整体</td>
+              <td style="font-weight:600;">11.18M</td><td style="font-weight:600;">5.33M</td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(47.7%);background:#378ADD;"></div><span class="bar-text">47.7%</span></td>
+              <td style="font-weight:600;">5.32M</td><td style="font-weight:600;">4.23M</td><td style="font-weight:600;">3.83M</td><td style="font-weight:600;">1.35M</td><td style="font-weight:600;">0.91M</td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(88.9%);background:#EF9F27;"></div><span class="bar-text">88.9%</span></td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(35.1%);background:#E24B4A;"></div><span class="bar-text">35.1%</span></td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(47.7%);background:#639922;"></div><span class="bar-text">47.7%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年1-2单</td>
+              <td>9.33M</td><td>4.22M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(45.2%);background:#378ADD;"></div><span class="bar-text">45.2%</span></td>
+              <td>4.21M</td><td>3.30M</td><td>2.98M</td><td>1.03M</td><td>0.67M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(88.6%);background:#EF9F27;"></div><span class="bar-text">88.6%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(34.6%);background:#E24B4A;"></div><span class="bar-text">34.6%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(46.5%);background:#639922;"></div><span class="bar-text">46.5%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年3-5单</td>
+              <td>1.38M</td><td>0.81M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(59.1%);background:#378ADD;"></div><span class="bar-text">59.1%</span></td>
+              <td>0.81M</td><td>0.68M</td><td>0.62M</td><td>0.23M</td><td>0.17M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(90.0%);background:#EF9F27;"></div><span class="bar-text">90.0%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(36.9%);background:#E24B4A;"></div><span class="bar-text">36.9%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(50.9%);background:#639922;"></div><span class="bar-text">50.9%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年6-10单</td>
+              <td>0.35M</td><td>0.22M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(62.7%);background:#378ADD;"></div><span class="bar-text">62.7%</span></td>
+              <td>0.22M</td><td>0.19M</td><td>0.17M</td><td>0.06M</td><td>0.05M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(90.3%);background:#EF9F27;"></div><span class="bar-text">90.3%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(37.3%);background:#E24B4A;"></div><span class="bar-text">37.3%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(52.9%);background:#639922;"></div><span class="bar-text">52.9%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年10单+</td>
+              <td>0.13M</td><td>0.08M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(62.2%);background:#378ADD;"></div><span class="bar-text">62.2%</span></td>
+              <td>0.08M</td><td>0.07M</td><td>0.06M</td><td>0.02M</td><td>0.02M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(90.2%);background:#EF9F27;"></div><span class="bar-text">90.2%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(36.7%);background:#E24B4A;"></div><span class="bar-text">36.7%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(53.2%);background:#639922;"></div><span class="bar-text">53.2%</span></td>
+            </tr>
+            <tr style="font-weight:600;background:#EEEDFE22;">
+              <td class="row-label" style="font-weight:600;">25→26 整体</td>
+              <td style="font-weight:600;">11.77M</td><td style="font-weight:600;">5.62M</td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(47.7%);background:#378ADD;"></div><span class="bar-text">47.7%</span></td>
+              <td style="font-weight:600;">5.60M</td><td style="font-weight:600;">4.49M</td><td style="font-weight:600;">4.04M</td><td style="font-weight:600;">1.36M</td><td style="font-weight:600;">0.97M</td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(88.5%);background:#EF9F27;"></div><span class="bar-text">88.5%</span></td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(33.7%);background:#E24B4A;"></div><span class="bar-text">33.7%</span></td>
+              <td class="bar-cell" style="font-weight:600;"><div class="bar-inner" style="width:calc(50.5%);background:#639922;"></div><span class="bar-text">50.5%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年1-2单</td>
+              <td>9.75M</td><td>4.40M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(45.1%);background:#378ADD;"></div><span class="bar-text">45.1%</span></td>
+              <td>4.38M</td><td>3.46M</td><td>3.10M</td><td>1.03M</td><td>0.71M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(88.2%);background:#EF9F27;"></div><span class="bar-text">88.2%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(33.1%);background:#E24B4A;"></div><span class="bar-text">33.1%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(49.1%);background:#639922;"></div><span class="bar-text">49.1%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年3-5单</td>
+              <td>1.48M</td><td>0.88M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(59.4%);background:#378ADD;"></div><span class="bar-text">59.4%</span></td>
+              <td>0.88M</td><td>0.74M</td><td>0.67M</td><td>0.24M</td><td>0.18M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(89.6%);background:#EF9F27;"></div><span class="bar-text">89.6%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(35.5%);background:#E24B4A;"></div><span class="bar-text">35.5%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(54.1%);background:#639922;"></div><span class="bar-text">54.1%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年6-10单</td>
+              <td>0.39M</td><td>0.25M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(63.3%);background:#378ADD;"></div><span class="bar-text">63.3%</span></td>
+              <td>0.25M</td><td>0.21M</td><td>0.19M</td><td>0.07M</td><td>0.06M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(90.0%);background:#EF9F27;"></div><span class="bar-text">90.0%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(35.9%);background:#E24B4A;"></div><span class="bar-text">35.9%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(56.2%);background:#639922;"></div><span class="bar-text">56.2%</span></td>
+            </tr>
+            <tr style="background:#fafaf8;">
+              <td class="row-label" style="font-size:10px;">&nbsp;&nbsp;前一年10单+</td>
+              <td>0.15M</td><td>0.10M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(63.1%);background:#378ADD;"></div><span class="bar-text">63.1%</span></td>
+              <td>0.10M</td><td>0.08M</td><td>0.07M</td><td>0.03M</td><td>0.02M</td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(89.6%);background:#EF9F27;"></div><span class="bar-text">89.6%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(35.8%);background:#E24B4A;"></div><span class="bar-text">35.8%</span></td>
+              <td class="bar-cell"><div class="bar-inner" style="width:calc(55.8%);background:#639922;"></div><span class="bar-text">55.8%</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:11px;color:#999;text-align:center;margin-bottom:16px;"><br></p>
+
+      <!-- 同比变化图 -->
+      <h4 style="font-size:14px;font-weight:500;color:#333;margin-bottom:10px;">各环节转化率同比变化</h4>
+      <p style="font-size:13px;color:#666;margin-bottom:10px;">正值=转化率提升，负值=转化率恶化。</p>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>回访率变化</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#EF9F27;"></span>列表页通过率变化</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>详情页通过率变化</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#639922;"></span>填写页通过率变化</div>
+      </div>
+      <div class="chart-wrap" style="height:260px;">
+        <canvas id="funnelChart" role="img" aria-label="流失用户回访漏斗同比变化"></canvas>
+      </div>
+
+      <div class="insight-box" style="margin-top:16px;">
+        <strong>核心发现：</strong>流失用户在回访层面的表现并不差——整体回访率持平（47.7%），3-5单及以上的回访率甚至<strong>同比提升 0.4~0.8pp</strong>，说明这批用户并非"彻底离开"，只是没转化成单。问题出在<strong>浏览→决策的转化环节</strong>：列表页通过率整体下降 -0.4pp，详情页通过率大幅下降 <strong>-1.5pp</strong>（所有频次段均下降）。而一旦用户进入填写页，填写页通过率反而提升了 2.6~3.3pp。这意味着漏斗的堵点在<strong>详情页→填写页</strong>，用户浏览了详情但没有进一步行动——与前面行为分析的结论高度一致：这批用户"有兴趣，但缺临门一脚"。
+      </div>
+
+      <p style="margin-top:12px;font-size:13px;color:#666;">基于以上发现，我们进一步从订单维度剖析流失用户在 25年1-5月的消费特征，探究他们在<strong>酒店星级、价格段、出行场景、预订习惯</strong>等维度与其他用户的差异。</p>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 3: 流失用户订单特征画像 ===== -->
+  <div class="section-card">
+    <div class="section-title">
+      <span class="section-num">三</span>流失用户订单特征画像：低星低价·异地·倾向提前订
+    </div>
+    <div class="section-body">
+      <p style="margin-bottom:16px;">以下数据为25年1-5月四类用户的订单分布特征，从<strong>酒店星级、城市线级、入住场景、ADR区间、本异地、提前订天数、连住天数</strong>七个维度进行对比，重点关注流失用户的特征差异。</p>
+
+      <!-- 订单特征对比表 -->
+      <h4 style="font-size:14px;font-weight:500;color:#333;margin-bottom:10px;">多维度订单特征对比</h4>
+      <div class="matrix-wrap" style="margin-bottom:20px;">
+        <table class="matrix-table" style="font-size:11px;">
+          <thead>
+            <tr>
+              <th style="width:120px;">维度</th>
+              <th style="width:80px;">细分</th>
+              <th style="background:#FCEBEB;color:#A32D2D;">流失</th>
+              <th style="background:#FAEEDA;color:#854F0B;">降频</th>
+              <th style="background:#E6F1FB;color:#185FA5;">同频</th>
+              <th style="background:#EAF3DE;color:#3B6D11;">升频</th>
+              <th>总计</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 酒店星级 -->
+            <tr><td class="row-label" rowspan="3" style="vertical-align:middle;">酒店星级</td>
+              <td>低星</td>
+              <td class="cell-high">70%</td><td>63%</td><td>64%</td><td style="color:#3B6D11;">59%</td><td>66%</td></tr>
+            <tr><td>三星</td>
+              <td>21%</td><td>25%</td><td>24%</td><td>26%</td><td>23%</td></tr>
+            <tr><td>高星</td>
+              <td style="color:#A32D2D;">9%</td><td>12%</td><td>12%</td><td style="color:#3B6D11;">15%</td><td>11%</td></tr>
+
+            <!-- 城市线级 -->
+            <tr style="background:#fafaf8;"><td class="row-label" rowspan="6" style="vertical-align:middle;">城市线级</td>
+              <td>一线</td><td>11%</td><td>11%</td><td>10%</td><td>10%</td><td>11%</td></tr>
+            <tr style="background:#fafaf8;"><td>新一线</td><td>24%</td><td>22%</td><td>22%</td><td>22%</td><td>23%</td></tr>
+            <tr style="background:#fafaf8;"><td>二线</td><td>19%</td><td>17%</td><td>18%</td><td>18%</td><td>18%</td></tr>
+            <tr style="background:#fafaf8;"><td>三线</td><td>19%</td><td>20%</td><td>19%</td><td>19%</td><td>19%</td></tr>
+            <tr style="background:#fafaf8;"><td>四线</td><td>15%</td><td>16%</td><td>16%</td><td>16%</td><td>15%</td></tr>
+            <tr style="background:#fafaf8;"><td>五线及以下</td><td>13%</td><td>14%</td><td>15%</td><td>15%</td><td>14%</td></tr>
+
+            <!-- 入住场景 -->
+            <tr><td class="row-label" rowspan="3" style="vertical-align:middle;">入住场景</td>
+              <td>节假日</td>
+              <td>14%</td><td style="color:#854F0B;">11%</td><td style="color:#185FA5;">16%</td><td>13%</td><td>13%</td></tr>
+            <tr><td>周末</td><td>24%</td><td>24%</td><td>24%</td><td>24%</td><td>24%</td></tr>
+            <tr><td>周中</td><td>62%</td><td style="color:#854F0B;">65%</td><td>61%</td><td>63%</td><td>63%</td></tr>
+
+            <!-- ADR区间 -->
+            <tr style="background:#fafaf8;"><td class="row-label" rowspan="7" style="vertical-align:middle;">ADR区间</td>
+              <td>0-150元</td>
+              <td class="cell-high">49%</td><td>47%</td><td>44%</td><td style="color:#3B6D11;">43%</td><td>47%</td></tr>
+            <tr style="background:#fafaf8;"><td>150-250元</td><td>34%</td><td>35%</td><td>35%</td><td>36%</td><td>35%</td></tr>
+            <tr style="background:#fafaf8;"><td>250-350元</td><td>11%</td><td>11%</td><td>12%</td><td>13%</td><td>11%</td></tr>
+            <tr style="background:#fafaf8;"><td>350-450元</td><td>3%</td><td>4%</td><td>4%</td><td>4%</td><td>4%</td></tr>
+            <tr style="background:#fafaf8;"><td>450-600元</td><td>2%</td><td>2%</td><td>2%</td><td>2%</td><td>2%</td></tr>
+            <tr style="background:#fafaf8;"><td>600-750元</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td></tr>
+            <tr style="background:#fafaf8;"><td>750元以上</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td></tr>
+
+            <!-- 本异地 -->
+            <tr><td class="row-label" rowspan="2" style="vertical-align:middle;">本地/异地</td>
+              <td>本地</td>
+              <td style="color:#A32D2D;">40.7%</td><td style="color:#854F0B;">46.6%</td><td>41.3%</td><td>44.3%</td><td>43.1%</td></tr>
+            <tr><td>异地</td>
+              <td class="cell-high">59.3%</td><td>53.4%</td><td>58.7%</td><td style="color:#3B6D11;">55.7%</td><td>56.9%</td></tr>
+
+            <!-- 提前订天数 -->
+            <tr style="background:#fafaf8;"><td class="row-label" rowspan="6" style="vertical-align:middle;">提前订天数</td>
+              <td>0天（当天）</td>
+              <td style="color:#A32D2D;">87%</td><td class="cell-high">93%</td><td>86%</td><td>91%</td><td>89%</td></tr>
+            <tr style="background:#fafaf8;"><td>1天</td><td>6%</td><td>4%</td><td>5%</td><td>4%</td><td>5%</td></tr>
+            <tr style="background:#fafaf8;"><td>2天</td><td>2%</td><td>1%</td><td>2%</td><td>1%</td><td>1%</td></tr>
+            <tr style="background:#fafaf8;"><td>3天</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td></tr>
+            <tr style="background:#fafaf8;"><td>4天</td><td>1%</td><td>0%</td><td>1%</td><td>1%</td><td>1%</td></tr>
+            <tr style="background:#fafaf8;"><td>≥5天</td>
+              <td class="cell-high">4%</td><td>1%</td><td>4%</td><td>2%</td><td>3%</td></tr>
+
+            <!-- 连住天数 -->
+            <tr><td class="row-label" rowspan="5" style="vertical-align:middle;">连住天数</td>
+              <td>1天</td><td>93%</td><td>96%</td><td>93%</td><td>95%</td><td>94%</td></tr>
+            <tr><td>2天</td><td>5%</td><td>3%</td><td>5%</td><td>3%</td><td>4%</td></tr>
+            <tr><td>3天</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td><td>1%</td></tr>
+            <tr><td>4天</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td></tr>
+            <tr><td>≥5天</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td><td>0%</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:11px;color:#999;text-align:center;margin-bottom:20px;">红色/橙色高亮 = 该组中该细分占比最高（或与流失特性相关），绿色高亮 = 该组中该细分占比最低</p>
+
+      <!-- 核心差异维度可视化 -->
+      <h4 style="font-size:14px;font-weight:500;color:#333;margin-bottom:10px;">流失用户 vs 升频用户：关键差异维度</h4>
+      <p style="font-size:13px;color:#666;margin-bottom:10px;">选取差异最显著的四个维度进行对比。</p>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>流失用户</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#639922;"></span>升频用户</div>
+      </div>
+      <div class="chart-wrap" style="height:240px;margin-bottom:16px;">
+        <canvas id="orderFeatureChart" role="img" aria-label="流失vs升频订单特征对比">订单特征对比图</canvas>
+      </div>
+
+      <hr>
+
+      <div class="insight-box">
+        <strong>流失用户订单特征画像：</strong>综合上述七个维度，可以勾勒出流失用户的典型消费画像——
+      </div>
+
+      <div class="three-col" style="margin-bottom:16px;">
+        <div class="profile-card loss" style="padding:14px 16px;">
+          <div style="font-size:13px;font-weight:500;color:#A32D2D;margin-bottom:6px;">🏨 低星低价偏好</div>
+          <div style="font-size:12px;color:#666;line-height:1.7;">
+            低星占比<strong style="color:#A32D2D;">70%</strong>（升频仅59%），ADR 0-150元占比<strong style="color:#A32D2D;">49%</strong>（升频仅43%）。价格敏感，追求性价比。
+          </div>
+        </div>
+        <div class="profile-card down" style="padding:14px 16px;">
+          <div style="font-size:13px;font-weight:500;color:#854F0B;margin-bottom:6px;">🗺️ 异地属性突出</div>
+          <div style="font-size:12px;color:#666;line-height:1.7;">
+            异地订单占比<strong style="color:#854F0B;">59.3%</strong>，为四组最高（升频仅55.7%）。异地住宿需求强但留存弱。
+          </div>
+        </div>
+        <div class="profile-card loss" style="padding:14px 16px;">
+          <div style="font-size:13px;font-weight:500;color:#A32D2D;margin-bottom:6px;">📅 倾向提前预订</div>
+          <div style="font-size:12px;color:#666;line-height:1.7;">
+            提前≥5天预订占比<strong style="color:#A32D2D;">4%</strong>，为四组最高；当日订<strong style="color:#A32D2D;">87%</strong>为四组最低——相比其他组更倾向于提前计划，但这些提前规划者最终仍流失了。
+          </div>
+        </div>
+      </div>
+
+      <div class="insight-box">
+        <strong>核心结论：</strong>流失用户并非"没有需求的用户"，而是<strong>"有需求但平台未接住的用户"</strong>——他们偏异地的住宿需求天然比本地用户更难留存（频次低、间隔长）；但同时，4%的提前≥5天预订比例说明<strong>存在一批有规划意识的用户在做比较后流失</strong>，这与回访漏斗中"详情页通过率下降"的结论高度吻合：用户提前搜索、仔细浏览、却在最后决策环节离开了平台。相较之下，降频用户则呈现另一种画像——本地占比最高（46.6%）、周中占比最高（65%）、当天订比例最高（93%），是较为典型的"临时本地需求型"用户，需求频次天然难以提升。
+      </div>
+
+      <p style="margin-top:12px;font-size:13px;color:#666;">基于以上订单画像和回访漏斗结论，我们进一步选取 25年1-5月有消费、且在 26年1-5月出现降频/流失的用户，回溯其在 <strong>25.12.25–25.12.31</strong>（流失/降频统计时间前最后一周）的实时行为数据，尝试找出预警特征与可干预节点。</p>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 4: 行为特征分析 ===== -->
+  <div class="section-card">
+    <div class="section-title">
+      <span class="section-num">四</span>流失前行为特征分析（25.12.25–12.31）
+    </div>
+    <div class="section-body">
+      <p style="margin-bottom:16px;">选取 25年1-5月有消费（产生有效单）的用户，按其在 26年1-5月的消费行为分为四组，研究其在 <strong>25.12.25–12.31</strong>（流失/降频判断统计时间前）的行为数据，识别不同去向用户的行为差异。</p>
+
+      <!-- 用户规模 -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label"><span class="kpi-badge badge-loss">流失</span>样本量</div>
+          <div class="kpi-val" style="color:#A32D2D;">888,729</div>
+          <div class="kpi-sub">占26年1-5月流失用户的7.5%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><span class="kpi-badge badge-down">降频</span>样本量</div>
+          <div class="kpi-val" style="color:#854F0B;">635,859</div>
+          <div class="kpi-sub">占26年1-5月降频用户的28.8%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><span class="kpi-badge badge-same">同频</span>样本量</div>
+          <div class="kpi-val" style="color:#185FA5;">280,930</div>
+          <div class="kpi-sub">占26年1-5月同频用户的19.0%</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label"><span class="kpi-badge badge-up">升频</span>样本量</div>
+          <div class="kpi-val" style="color:#3B6D11;">678,410</div>
+          <div class="kpi-sub">占26年1-5月升频用户的34.0%</div>
+        </div>
+      </div>
+
+      <!-- 雷达图 -->
+      <h4 style="font-size:13px;font-weight:500;color:#666;margin-bottom:10px;">核心指标雷达对比</h4>
+      <div class="legend">
+        <div class="legend-item"><span class="legend-dot" style="background:#E24B4A;"></span>流失</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#EF9F27;"></span>降频</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#378ADD;"></span>同频</div>
+        <div class="legend-item"><span class="legend-dot" style="background:#639922;"></span>升频</div>
+      </div>
+      <div class="chart-wrap" style="height:340px;margin-bottom:20px;">
+        <canvas id="radarChart" role="img" aria-label="四类用户核心指标雷达对比图">雷达图</canvas>
+      </div>
+
+      <hr>
+
+      <!-- 参与度维度 -->
+      <h4 style="font-size:14px;font-weight:500;margin:16px 0 10px;color:#333;">4.1 活动 & 优惠参与度</h4>
+      <div class="chart-wrap" style="height:200px;margin-bottom:8px;">
+        <canvas id="engageChart" role="img" aria-label="活动优惠参与度对比">参与度对比图</canvas>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>指标</th><th>流失</th><th>降频</th><th>同频</th><th>升频</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>活动页点击率</td>
+            <td class="worst">0.19%</td><td>0.28%</td><td>0.25%</td><td class="best">0.34%</td>
+          </tr>
+          <tr>
+            <td>活动页人均点击次数</td>
+            <td class="worst">4.50</td><td>4.18</td><td>4.37</td><td class="best">4.11</td>
+          </tr>
+          <tr>
+            <td>活动页人均停留时长(ms)</td>
+            <td>25,619</td><td class="best">33,105</td><td>25,207</td><td>25,110</td>
+          </tr>
+          <tr>
+            <td>优惠点击率</td>
+            <td class="worst">73.19%</td><td>82.11%</td><td>79.91%</td><td class="best">84.08%</td>
+          </tr>
+          <tr>
+            <td>优惠人均点击次数</td>
+            <td class="worst">2.83</td><td>3.76</td><td>3.37</td><td class="best">4.15</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="insight-box">
+        <strong>结论：</strong>流失用户活动点击率仅 0.19%，是升频的 0.56 倍。但<strong>降频用户的活动页停留时间最长（33,105ms）</strong>，说明其对活动有兴趣但转化存在障碍，可能是价格不合适或供给缺失。优惠敏感度（点击率和次数）随用户留存质量呈明显正相关，优惠是区分用户粘性的重要杠杆。
+      </div>
+
+      <hr>
+
+      <!-- 搜索决策维度 -->
+      <h4 style="font-size:14px;font-weight:500;margin:16px 0 10px;color:#333;">4.2 搜索深度 & 决策行为</h4>
+      <table class="data-table">
+        <thead>
+          <tr><th>指标</th><th>流失</th><th>降频</th><th>同频</th><th>升频</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>列表页搜索点击率</td>
+            <td class="worst">40.97%</td><td>44.14%</td><td>45.57%</td><td class="best">46.19%</td>
+          </tr>
+          <tr>
+            <td>深度搜索率（地图/附近探索）</td>
+            <td class="worst">9.00%</td><td>8.97%</td><td class="best">10.38%</td><td>9.78%</td>
+          </tr>
+          <tr>
+            <td>目的地探索率</td>
+            <td class="worst">36.58%</td><td>42.57%</td><td>41.64%</td><td class="best">44.47%</td>
+          </tr>
+          <tr>
+            <td>紧急搜索率（入住-访问≤2天）</td>
+            <td class="worst">71.56%</td><td class="worst2">83.16%</td><td>78.81%</td><td class="best">85.15%</td>
+          </tr>
+          <tr>
+            <td>连住搜索率（离店-入住≥3天）</td>
+            <td>4.52%</td><td class="worst">4.16%</td><td class="best">4.99%</td><td>4.60%</td>
+          </tr>
+          <tr>
+            <td>访问与入住平均间隔（天）</td>
+            <td class="worst">3.63</td><td class="best">2.27</td><td>3.33</td><td>2.21</td>
+          </tr>
+          <tr>
+            <td>收藏/截图/分享率</td>
+            <td class="worst">7.24%</td><td>7.39%</td><td class="best">8.88%</td><td>8.02%</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="insight-box">
+        <strong>流失用户：</strong>访问-入住间隔达 3.63 天（最长），属于"提前计划型"，但在决策阶段未完成转化，可能是在对比阶段被竞品截流，或需求自然消退。深度搜索和目的地探索率均最低，说明其需求意向本身就相对模糊。<br><br>
+        <strong>降频用户：</strong>紧急搜索率高达 83.16%（四组最高），访问-入住间隔仅 2.27 天，典型的"有需要才来"模式，没有形成计划性出行习惯，复购依赖随机需求触发。
+      </div>
+
+      <hr>
+
+      <!-- 详情页深度 -->
+      <h4 style="font-size:14px;font-weight:500;margin:16px 0 10px;color:#333;">4.3 详情页决策深度</h4>
+      <div class="chart-wrap" style="height:260px;margin-bottom:8px;">
+        <canvas id="detailChart" role="img" aria-label="详情页深度行为对比">详情页对比图</canvas>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>指标</th><th>流失</th><th>降频</th><th>同频</th><th>升频</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>7天访问酒店数</td>
+            <td class="worst">4.51</td><td>5.06</td><td>5.16</td><td class="best">5.41</td>
+          </tr>
+          <tr>
+            <td>单酒店平均访问次数</td>
+            <td class="worst">1.46</td><td>1.63</td><td>1.55</td><td class="best">1.72</td>
+          </tr>
+          <tr>
+            <td>单酒店详情页停留时长(ms)</td>
+            <td class="worst">43,601</td><td>43,719</td><td>45,286</td><td class="best">46,693</td>
+          </tr>
+          <tr>
+            <td>详情页压屏率</td>
+            <td class="worst">23.70%</td><td>30.41%</td><td>29.29%</td><td class="best">33.43%</td>
+          </tr>
+          <tr>
+            <td>价格日历点击率</td>
+            <td class="worst">66.86%</td><td>78.57%</td><td>75.54%</td><td class="best">81.72%</td>
+          </tr>
+          <tr>
+            <td>点评栏点击率</td>
+            <td class="worst">3.01%</td><td>3.74%</td><td>3.87%</td><td class="best">4.01%</td>
+          </tr>
+          <tr>
+            <td>设施栏点击率</td>
+            <td class="worst">3.49%</td><td class="second">5.42%</td><td>4.61%</td><td class="best">5.75%</td>
+          </tr>
+          <tr>
+            <td>价格星级点击率</td>
+            <td class="worst">5.20%</td><td>5.52%</td><td>6.04%</td><td class="best">6.10%</td>
+          </tr>
+          <tr>
+            <td>平均筛选星级</td>
+            <td class="worst">4.23</td><td>4.41</td><td>4.32</td><td class="best">4.41</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="insight-box">
+        <strong>结论：</strong>流失用户在详情页的探索深度全面垫底——压屏率、价格日历、点评、设施点击均最低。这说明他们在接触酒店详情时未能获取足够的决策信息就离开了平台。升频用户的详情页停留更长、点击更深，信息完整后才高效决策。
+      </div>
+
+      <hr>
+
+      <!-- 决策路径对比 -->
+      <h4 style="font-size:14px;font-weight:500;margin:16px 0 10px;color:#333;">4.4 决策路径对比</h4>
+      <p style="font-size:13px;color:#666;margin-bottom:10px;">升频用户形成了完整的"看-比-决策-购买"闭环，流失用户的链条在"决策"环节断裂：</p>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;color:#666;margin-bottom:6px;"><span class="badge-up" style="background:#EAF3DE;color:#3B6D11;font-size:12px;padding:2px 8px;border-radius:4px;">升频用户</span> 完整路径</div>
+        <div class="flow-row">
+          <div class="flow-step active">活动触达 0.34%</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step active">优惠响应 84.08%</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step active">充分比较 5.41家</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step active">深度决策（压屏33.4%）</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step active">快速下单 2.21天</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <div style="font-size:12px;color:#666;margin-bottom:6px;"><span style="background:#FCEBEB;color:#A32D2D;font-size:12px;padding:2px 8px;border-radius:4px;">流失用户</span> 断裂路径</div>
+        <div class="flow-row">
+          <div class="flow-step broken">活动无感 0.19%</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step broken">优惠漠视 73.19%</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step broken">比较不足 4.51家</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step broken">决策浅薄（压屏23.7%）</div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step broken">未下单 流失</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 5: 用户画像 ===== -->
+  <div class="section-card">
+    <div class="section-title">
+      <span class="section-num">五</span>四类用户画像总结
+    </div>
+    <div class="profile-grid">
+      <div class="profile-card loss">
+        <div class="profile-title loss">流失用户 — "路过型"</div>
+        <div class="profile-quote">"有想法，但平台没抓住我"</div>
+        <ul class="profile-list">
+          <li>活动感知最弱，优惠参与度最低（73.19%）</li>
+          <li>详情页探索最浅，决策信息摄取不足</li>
+          <li>订单特征：低星占比70%、异地占比59.3%，ADR集中在0-150元</li>
+          <li>提前预订倾向强：提前≥5天占比4%（四组最高），当日订87%（四组最低）</li>
+          <li>平均筛选星级最低（4.23），需求偏向性价比</li>
+        </ul>
+      </div>
+      <div class="profile-card down">
+        <div class="profile-title down">降频用户 — "临时型"</div>
+        <div class="profile-quote">"有需要才想起来，但越来越少需要"</div>
+        <ul class="profile-list">
+          <li>紧急搜索率最高（83.16%），依赖临时触发</li>
+          <li>活动页停留最长（33,105ms）但转化差</li>
+          <li>订单特征：本地占比最高（46.6%）、周中占比最高（65%）、当天订93%</li>
+          <li>典型的"本地临时需求"驱动，缺乏计划性出行</li>
+          <li>设施关注度高（5.42%），有品质诉求但价格敏感</li>
+        </ul>
+      </div>
+      <div class="profile-card same">
+        <div class="profile-title same">同频用户 — "稳定型"</div>
+        <div class="profile-quote">"我就这样，不多不少"</div>
+        <ul class="profile-list">
+          <li>人数最少（280,930），行为最稳定</li>
+          <li>列表页日均停留最长（90,256ms）</li>
+          <li>深度搜索率最高（10.38%），探索型用户</li>
+          <li>收藏/分享率最高（8.88%），有保存习惯</li>
+          <li>连住搜索率最高（4.99%），出行计划性强</li>
+        </ul>
+      </div>
+      <div class="profile-card up">
+        <div class="profile-title up">升频用户 — "成长型"</div>
+        <div class="profile-quote">"平台给了我足够的理由多订几次"</div>
+        <ul class="profile-list">
+          <li>活动点击率最高（0.34%），促销响应最好</li>
+          <li>优惠点击次数最多（4.15次），价格敏感且活跃</li>
+          <li>访问酒店数最多（5.41家），充分比较后决策</li>
+          <li>设施/点评关注度最高，决策信息最全面</li>
+          <li>访问-入住间隔最短（2.21天），高效转化</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== SECTION 6: 运营建议 ===== -->
+  <div class="section-card">
+    <div class="section-title">
+      <span class="section-num">六</span>运营建议
+    </div>
+    <div class="section-body">
+      <table class="rec-table">
+        <thead>
+          <tr>
+            <th style="width:80px;">人群</th>
+            <th style="width:180px;">核心问题</th>
+            <th>针对性建议</th>
+            <th style="width:120px;">关键抓手</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="kpi-badge badge-loss">流失</span></td>
+            <td>决策链断裂，异地低价为主，详情页深度不够，4%提前规划者流失最可惜</td>
+            <td>
+              1. 详情页智能引导（一键展开价格日历、点评摘要、关键设施）<br>
+              2. 基于用户浏览记录的离开挽回 Push（"您看过的酒店有新优惠"）<br>
+              3. 针对异地场景：行程前3-7天推送目的地酒店推荐 + 限时优惠<br>
+              4. 对提前≥5天预订但未下单的用户做重点挽回（4%群体高意向高价值）<br>
+              5. 降低决策门槛：快速比价、AI推荐、限时锁价提醒
+            </td>
+            <td>详情页改造、异地场景引导、提前规划者挽回</td>
+          </tr>
+          <tr>
+            <td><span class="kpi-badge badge-down">降频</span></td>
+            <td>本地临时需求主导，周中占比最高，习惯未养成，活动停留长但转化差</td>
+            <td>
+              1. 针对本地临时场景强化即时活动（当日特惠、今晚可住）<br>
+              2. 连续消费激励体系（第N次消费立减、会员积分加速）<br>
+              3. 将本地周中需求向周末/节假日延伸（"周末本地游推荐"）<br>
+              4. 提升活动页转化率（缩短从停留到下单的路径）
+            </td>
+            <td>场景延伸、习惯养成、活动页优化</td>
+          </tr>
+          <tr>
+            <td><span class="kpi-badge badge-same">同频</span></td>
+            <td>频次稳定但未提升，探索意愿强但行动少</td>
+            <td>
+              1. 推送新目的地/新酒店探索内容（匹配其深度搜索偏好）<br>
+              2. 连住升级权益刺激（多住一晚享折扣）<br>
+              3. 将高收藏率转化为预订转化（收藏提醒 + 优惠触发）<br>
+              4. 发展为 KOC，激励分享带来额外复购
+            </td>
+            <td>内容探索、收藏转化</td>
+          </tr>
+          <tr>
+            <td><span class="kpi-badge badge-up">升频</span></td>
+            <td>高价值用户，需防止未来流失</td>
+            <td>
+              1. 确保持续稳定的优惠权益供给（会员专属价、积分兑换）<br>
+              2. 提升会员等级体验感知（专属服务、早鸟价）<br>
+              3. 建立预警机制：活动点击率下降 + 优惠点击次数减少时触发干预<br>
+              4. 高频用户 NPS 调研，持续优化体验
+            </td>
+            <td>权益保障、预警干预</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="insight-box" style="margin-top:16px;">
+        <strong>优先级建议：</strong>从规模和可干预性来看，建议优先聚焦<strong>流失用户的详情页改造 + 离开挽回触达</strong>（流失用户 888,729 人，每提升 1pp 转化即可挽回近 9000 单），以及<strong>降频用户的紧急场景承接与习惯养成</strong>（635,859 人，活动停留长、转化改善空间大）。
+      </div>
+
+      <div class="warn-box">
+        <strong>预警指标建议：</strong>将以下指标纳入流失预警模型：活动点击率 &lt; 0.20%、优惠点击次数 &lt; 3次、详情页压屏率 &lt; 25%、访问酒店数 &lt; 4.6家（7天内）。这四项指标的组合出现，是流失风险的强信号。
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FOOTER ===== -->
+  <div class="report-footer">
+    OTA酒店业务 | 用户降频流失分析报告 | 数据周期：2024–2026年1-5月同期 & 行为研究窗口：2025.12.25–12.31
+  </div>
+
+</div>
+
+<!-- Charts -->
+<script>
+// ===== 1. 趋势图：四类去向同比变化 =====
+new Chart(document.getElementById('trendChart'), {
+  type: 'bar',
+  data: {
+    labels: ['1-2单', '3-5单', '6-10单', '10单以上'],
+    datasets: [
+      {
+        label: '流失',
+        data: [1.17, 1.44, 1.38, 1.36],
+        backgroundColor: '#E24B4A99',
+        borderColor: '#E24B4A',
+        borderWidth: 1.5,
+        borderRadius: 3
+      },
+      {
+        label: '降频',
+        data: [-0.02, -0.13, 0.02, 0.13],
+        backgroundColor: '#EF9F2799',
+        borderColor: '#EF9F27',
+        borderWidth: 1.5,
+        borderRadius: 3
+      },
+      {
+        label: '同频',
+        data: [-0.28, -0.19, -0.15, -0.06],
+        backgroundColor: '#378ADD99',
+        borderColor: '#378ADD',
+        borderWidth: 1.5,
+        borderRadius: 3
+      },
+      {
+        label: '升频',
+        data: [-0.88, -1.11, -1.26, -1.84],
+        backgroundColor: '#63992299',
+        borderColor: '#639922',
+        borderWidth: 1.5,
+        borderRadius: 3
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const v = ctx.raw;
+            const label = ctx.dataset.label;
+            const dir = v > 0 ? '上升' : '下降';
+            const sense = (label === '流失' || label === '降频')
+              ? (v > 0 ? ' ⚠恶化' : ' 改善')
+              : (v < 0 ? ' ⚠恶化' : ' 改善');
+            return label + '：' + dir + ' ' + Math.abs(v) + 'pp' + sense;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(0,0,0,0.04)' },
+        ticks: { font: { size: 12 } }
+      },
+      y: {
+        grid: { color: 'rgba(0,0,0,0.04)' },
+        ticks: { font: { size: 11 }, callback: v => v + 'pp' },
+        title: { display: true, text: '同比变化（百分点）', font: { size: 11 }, color: '#aaa' }
+      }
+    }
+  }
+});
+
+// ===== 2. 流失用户回访漏斗同比变化 =====
+new Chart(document.getElementById('funnelChart'), {
+  type: 'bar',
+  data: {
+    labels: ['整体', '前一年1-2单', '前一年3-5单', '前一年6-10单', '前一年10单+'],
+    datasets: [
+      {
+        label: '回访率变化',
+        data: [0.1, -0.1, 0.4, 0.6, 0.8],
+        backgroundColor: '#378ADD99',
+        borderColor: '#378ADD',
+        borderWidth: 1.5,
+        borderRadius: 3
+      },
+      {
+        label: '列表页通过率变化',
+        data: [-0.4, -0.4, -0.4, -0.4, -0.6],
+        backgroundColor: '#EF9F2799',
+        borderColor: '#EF9F27',
+        borderWidth: 1.5,
+        borderRadius: 3
+      },
+      {
+        label: '详情页通过率变化',
+        data: [-1.5, -1.5, -1.4, -1.4, -0.9],
+        backgroundColor: '#E24B4A99',
+        borderColor: '#E24B4A',
+        borderWidth: 1.5,
+        borderRadius: 3
+      },
+      {
+        label: '填写页通过率变化',
+        data: [2.8, 2.7, 3.2, 3.3, 2.6],
+        backgroundColor: '#63992299',
+        borderColor: '#639922',
+        borderWidth: 1.5,
+        borderRadius: 3
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const v = ctx.raw;
+            return ctx.dataset.label + '：' + (v > 0 ? '+' : '') + v + 'pp' + (v < 0 ? ' ⚠' : '');
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(0,0,0,0.04)' },
+        ticks: { font: { size: 11 } }
+      },
+      y: {
+        grid: { color: 'rgba(0,0,0,0.04)' },
+        ticks: { font: { size: 11 }, callback: v => v + 'pp' },
+        title: { display: true, text: '同比变化（百分点）', font: { size: 11 }, color: '#aaa' }
+      }
+    }
+  }
+});
+
+// ===== 3. 流失vs升频订单特征对比 =====
+new Chart(document.getElementById('orderFeatureChart'), {
+  type: 'bar',
+  data: {
+    labels: ['低星占比', '异地订单占比', 'ADR 0-150占比', '提前≥5天占比'],
+    datasets: [
+      {
+        label: '流失用户',
+        data: [70, 59.3, 49, 4],
+        backgroundColor: '#E24B4A99',
+        borderColor: '#E24B4A',
+        borderWidth: 1.5,
+        borderRadius: 3
+      },
+      {
+        label: '升频用户',
+        data: [59, 55.7, 43, 2],
+        backgroundColor: '#63992299',
+        borderColor: '#639922',
+        borderWidth: 1.5,
+        borderRadius: 3
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.dataset.label + '：' + ctx.raw + '%'
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { display: false },
+        ticks: { font: { size: 12 } }
+      },
+      y: {
+        grid: { color: 'rgba(0,0,0,0.04)' },
+        ticks: { font: { size: 11 }, callback: v => v + '%' },
+        title: { display: true, text: '占比', font: { size: 11 }, color: '#aaa' }
+      }
+    }
+  }
+});
+
+// ===== 4. 雷达图 =====
+const radarData = (label, data, color) => ({
+  label, data,
+  backgroundColor: color + '22',
+  borderColor: color,
+  borderWidth: 2,
+  pointBackgroundColor: color,
+  pointRadius: 3
+});
+new Chart(document.getElementById('radarChart'), {
+  type: 'radar',
+  data: {
+    labels: ['活动点击率', '优惠参与度', '目的地探索', '详情压屏率', '价格日历', '深度搜索', '收藏分享率', '搜索点击率'],
+    datasets: [
+      radarData('流失', [0.19, 73.19, 36.58, 23.70, 66.86, 9.00, 7.24, 40.97], '#E24B4A'),
+      radarData('降频', [0.28, 82.11, 42.57, 30.41, 78.57, 8.97, 7.39, 44.14], '#EF9F27'),
+      radarData('同频', [0.25, 79.91, 41.64, 29.29, 75.54, 10.38, 8.88, 45.57], '#378ADD'),
+      radarData('升频', [0.34, 84.08, 44.47, 33.43, 81.72, 9.78, 8.02, 46.19], '#639922')
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      r: {
+        beginAtZero: true,
+        ticks: { font: { size: 10 }, maxTicksLimit: 5, backdropColor: 'transparent' },
+        pointLabels: { font: { size: 12 } },
+        grid: { color: 'rgba(0,0,0,0.06)' }
+      }
+    }
+  }
+});
+
+// ===== 5. 参与度对比 =====
+new Chart(document.getElementById('engageChart'), {
+  type: 'bar',
+  data: {
+    labels: ['活动点击率(×100)', '优惠点击率', '目的地探索率', '收藏/分享率'],
+    datasets: [
+      { label: '流失', data: [0.19*100, 73.19, 36.58, 7.24], backgroundColor: '#E24B4A99', borderColor: '#E24B4A', borderWidth: 1, borderRadius: 3 },
+      { label: '降频', data: [0.28*100, 82.11, 42.57, 7.39], backgroundColor: '#EF9F2799', borderColor: '#EF9F27', borderWidth: 1, borderRadius: 3 },
+      { label: '同频', data: [0.25*100, 79.91, 41.64, 8.88], backgroundColor: '#378ADD99', borderColor: '#378ADD', borderWidth: 1, borderRadius: 3 },
+      { label: '升频', data: [0.34*100, 84.08, 44.47, 8.02], backgroundColor: '#63992299', borderColor: '#639922', borderWidth: 1, borderRadius: 3 }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+      y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+
+// ===== 6. 详情页深度 =====
+new Chart(document.getElementById('detailChart'), {
+  type: 'bar',
+  data: {
+    labels: ['压屏率', '价格日历点击', '点评点击率', '设施点击率', '价格星级点击'],
+    datasets: [
+      { label: '流失', data: [23.70, 66.86, 3.01, 3.49, 5.20], backgroundColor: '#E24B4A99', borderColor: '#E24B4A', borderWidth: 1, borderRadius: 3 },
+      { label: '降频', data: [30.41, 78.57, 3.74, 5.42, 5.52], backgroundColor: '#EF9F2799', borderColor: '#EF9F27', borderWidth: 1, borderRadius: 3 },
+      { label: '同频', data: [29.29, 75.54, 3.87, 4.61, 6.04], backgroundColor: '#378ADD99', borderColor: '#378ADD', borderWidth: 1, borderRadius: 3 },
+      { label: '升频', data: [33.43, 81.72, 4.01, 5.75, 6.10], backgroundColor: '#63992299', borderColor: '#639922', borderWidth: 1, borderRadius: 3 }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 11 } } },
+      y: { grid: { color: 'rgba(0,0,0,0.04)' }, ticks: { font: { size: 11 } } }
+    }
+  }
+});
+</script>
+</body>
+</html>
